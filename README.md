@@ -13,6 +13,10 @@ An offline-first gamified fitness prototype where consistency evolves a warrior 
 - Weekly evolution when the selected training-day target is met
 - Daily local notifications at 8 AM, noon or 8 PM
 - Persistent offline progress with SharedPreferences
+- Main Station with avatar statistics and equipment-aware avatar card
+- 50-coin daily completion reward
+- Store, equipment slots, inventory, event vault and rep-based quests
+- World Chat interface prepared for a secure real-time backend
 
 ## Build
 
