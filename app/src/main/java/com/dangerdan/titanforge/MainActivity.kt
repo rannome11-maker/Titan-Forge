@@ -25,21 +25,38 @@ private val GOLD = Color.rgb(212,175,55)
 private val BLACK = Color.rgb(9,9,9)
 private val PANEL = Color.rgb(24,24,24)
 
+private data class ShopItem(val id:String, val name:String, val icon:String, val type:String, val cost:Int)
+
 class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("forge", MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private val male = listOf("Ares","Ronin","Titan","Warden","Berserker","Paladin","Ranger","Spartan","Revenant","Sentinel")
     private val female = listOf("Valkyrie","Nyx","Athena","Huntress","Oracle","Tempest","Ember","Siren","Raven","Sovereign")
+    private val shopItems = listOf(
+        ShopItem("iron_sword","Iron Sword","⚔","Weapon",25), ShopItem("war_axe","War Axe","🪓","Weapon",60),
+        ShopItem("storm_hammer","Storm Hammer","🔨","Weapon",120), ShopItem("gold_armor","Golden Armor","🛡","Armor",80),
+        ShopItem("shadow_cloak","Shadow Cloak","♠","Clothing",55), ShopItem("war_crown","War Crown","♛","Accessory",150),
+        ShopItem("ember_ring","Ember Ring","◉","Accessory",40), ShopItem("winged_boots","Winged Boots","♜","Clothing",70)
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        show(if (prefs.getBoolean("setup", false)) ::dashboard else ::welcome)
+        show(if (prefs.getBoolean("setup", false)) ::station else ::welcome)
     }
 
     private fun show(screen: () -> Unit) {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32,28,32,28); setBackgroundColor(BLACK) }
         setContentView(ScrollView(this).apply { setBackgroundColor(BLACK); addView(root) })
+        if (prefs.getBoolean("setup",false)) topNav()
         screen()
+    }
+
+    private fun topNav() {
+        LinearLayout(this).apply {
+            gravity=Gravity.END or Gravity.CENTER_VERTICAL
+            addView(TextView(this@MainActivity).apply { text="◈ ${prefs.getInt("coins",0)} COINS"; setTextColor(GOLD); textSize=15f; setPadding(8,8,24,8) })
+            addView(Button(this@MainActivity).apply { text="⌂ HOME"; setTextColor(BLACK); setBackgroundColor(GOLD); setOnClickListener { show(::station) } })
+        }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
     }
 
     private fun title(text: String, size: Float = 30f) = TextView(this).apply {
@@ -88,13 +105,36 @@ class MainActivity : AppCompatActivity() {
         button("NOT NOW") { finishSetup(-1) }
     } }
 
-    private fun finishSetup(hour:Int) { prefs.edit().putBoolean("setup",true).putInt("reminder",hour).apply(); show(::dashboard) }
+    private fun finishSetup(hour:Int) { prefs.edit().putBoolean("setup",true).putInt("reminder",hour).apply(); show(::station) }
+
+    private fun station() {
+        weeklyEvolution()
+        val hero=prefs.getString("hero","Titan")!!; val tier=prefs.getInt("tier",1); val xp=prefs.getInt("xp",0)
+        title("MAIN STATION",28f)
+        avatarCard(hero,tier)
+        copy("POWER  ${100+tier*85+xp/10}     XP  $xp     STREAK  ${prefs.getInt("streak",0)}\nWEEKLY VICTORIES  ${prefs.getInt("weekDone",0)} / ${prefs.getInt("days",4)}")
+        button("TODAY'S WORKOUT") { show(::dashboard) }
+        button("STORE") { show(::store) }
+        button("SPECIAL QUESTS") { show(::quests) }
+        button("INVENTORY") { show(::inventory) }
+        button("WORLD CHAT") { show(::worldChat) }
+        button("FULL CHARACTER STATS") { show(::stats) }
+    }
+
+    private fun avatarCard(hero:String, tier:Int) {
+        val equipped=equippedItems().mapNotNull { id -> shopItems.find { it.id==id } }
+        val gear=if(equipped.isEmpty()) "NO EQUIPMENT" else equipped.joinToString("  ") { it.icon }
+        TextView(this).apply {
+            text="${glyph(prefs.getInt("heroIndex",0),tier)}\n\n$hero\n${tierName(tier)}\n$gear"
+            textSize=30f; gravity=Gravity.CENTER; setTextColor(GOLD); setBackgroundColor(PANEL); setPadding(10,40,10,40)
+        }.also(root::addView)
+    }
 
     private fun dashboard() {
         weeklyEvolution()
         val hero=prefs.getString("hero","Titan")!!; val tier=prefs.getInt("tier",1); val xp=prefs.getInt("xp",0); val streak=prefs.getInt("streak",0)
-        title("TITAN FORGE",26f); copy("${LocalDate.now()}  •  DAY ${streak+1}",14f)
-        TextView(this).apply { text="${glyph(prefs.getInt("heroIndex",0),tier)}\n$hero\n${tierName(tier)}"; textSize=30f; gravity=Gravity.CENTER; setTextColor(GOLD); setBackgroundColor(PANEL); setPadding(10,34,10,34) }.also(root::addView)
+        title("TODAY'S FORGE",26f); copy("${LocalDate.now()}  •  DAY ${streak+1}",14f)
+        avatarCard(hero,tier)
         copy("POWER  ${100+tier*85+xp/10}     XP  $xp     STREAK  $streak")
         ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=700; progress=xp%700; progressTintList=android.content.res.ColorStateList.valueOf(GOLD) }.also(root::addView)
         title("TODAY'S TRIALS",22f)
@@ -123,8 +163,8 @@ class MainActivity : AppCompatActivity() {
         if(complete<total) { Toast.makeText(this,"Complete all trials first: $complete/$total",Toast.LENGTH_SHORT).show(); return }
         if(prefs.getString("claimed","")==today) { Toast.makeText(this,"Victory already claimed",Toast.LENGTH_SHORT).show(); return }
         val yesterday=LocalDate.now().minusDays(1).toString(); val streak=if(prefs.getString("lastDay","")==yesterday) prefs.getInt("streak",0)+1 else 1
-        prefs.edit().putString("claimed",today).putString("lastDay",today).putInt("streak",streak).putInt("xp",prefs.getInt("xp",0)+100).putInt("weekDone",prefs.getInt("weekDone",0)+1).apply()
-        Toast.makeText(this,"+100 XP • VICTORY CLAIMED",Toast.LENGTH_LONG).show(); show(::dashboard)
+        prefs.edit().putString("claimed",today).putString("lastDay",today).putInt("streak",streak).putInt("xp",prefs.getInt("xp",0)+100).putInt("weekDone",prefs.getInt("weekDone",0)+1).putInt("coins",prefs.getInt("coins",0)+50).apply()
+        Toast.makeText(this,"+100 XP • +50 DAILY COINS",Toast.LENGTH_LONG).show(); show(::station)
     }
 
     private fun weeklyEvolution() {
@@ -137,8 +177,77 @@ class MainActivity : AppCompatActivity() {
     private fun stats() { show {
         val tier=prefs.getInt("tier",1); title("WARRIOR RECORD"); copy("${prefs.getString("hero","Titan")} • ${tierName(tier)}")
         copy("POWER: ${100+tier*85+prefs.getInt("xp",0)/10}\nTOTAL XP: ${prefs.getInt("xp",0)}\nCURRENT STREAK: ${prefs.getInt("streak",0)} days\nTHIS WEEK: ${prefs.getInt("weekDone",0)} / ${prefs.getInt("days",4)} victories\nGOAL: ${prefs.getString("goal","")}\nTARGET: ${prefs.getString("target","")}\nLEVEL: ${prefs.getString("level","")}")
-        title("EVOLUTION ROAD",22f); (1..8).forEach { copy("${if(it<=tier) "◆" else "◇"}  $it  ${tierName(it)}",17f) }; button("RETURN TO FORGE") { show(::dashboard) }
+        title("EVOLUTION ROAD",22f); (1..8).forEach { copy("${if(it<=tier) "◆" else "◇"}  $it  ${tierName(it)}",17f) }; button("RETURN TO STATION") { show(::station) }
     } }
+
+    private fun store() {
+        title("FORGE STORE"); copy("Spend coins earned from workouts and quests. Purchased gear appears on your avatar when equipped.")
+        val owned=ownedItems()
+        shopItems.forEach { item ->
+            val isOwned=item.id in owned
+            button("${item.icon}  ${item.name} • ${item.type} • ${if(isOwned) "OWNED" else "${item.cost} COINS"}") {
+                if(isOwned) equip(item) else buy(item)
+            }
+        }
+    }
+
+    private fun buy(item:ShopItem) {
+        val coins=prefs.getInt("coins",0)
+        if(coins<item.cost) { Toast.makeText(this,"You need ${item.cost-coins} more coins",Toast.LENGTH_SHORT).show(); return }
+        val owned=ownedItems()+item.id
+        prefs.edit().putInt("coins",coins-item.cost).putString("owned",owned.joinToString(",")).apply()
+        equip(item)
+    }
+
+    private fun equip(item:ShopItem) {
+        val equipped=equippedItems().filterNot { id -> shopItems.find { it.id==id }?.type==item.type }.toMutableSet()
+        if(item.id !in equipped) equipped.add(item.id)
+        prefs.edit().putString("equipped",equipped.joinToString(",")).apply()
+        Toast.makeText(this,"${item.name} equipped",Toast.LENGTH_SHORT).show(); show(::store)
+    }
+
+    private fun inventory() {
+        title("INVENTORY"); copy("◈ ${prefs.getInt("coins",0)} COINS\nQuest points: ${prefs.getInt("questPoints",0)}")
+        val owned=ownedItems()
+        if(owned.isEmpty()) copy("Your vault is empty. Earn coins and visit the Forge Store.")
+        else shopItems.filter { it.id in owned }.forEach { item ->
+            val equipped=item.id in equippedItems()
+            button("${item.icon}  ${item.name} • ${if(equipped) "EQUIPPED" else "TAP TO EQUIP"}") { equip(item) }
+        }
+        title("EVENT VAULT",22f); copy("Limited event items, seasonal trophies, and future quest rewards will be stored here.")
+    }
+
+    private fun quests() {
+        title("SPECIAL QUESTS")
+        val points=prefs.getInt("questPoints",0)
+        copy("EVERY REP = 1 POINT\nEVERY 10 POINTS = 1 COIN\n\nLifetime quest points: $points")
+        listOf("Push-ups","Sit-ups","Squats","Lunges","Burpees","Pull-ups","Other exercise").forEach { exercise ->
+            button("LOG $exercise".uppercase()) { repEntry(exercise) }
+        }
+    }
+
+    private fun repEntry(exercise:String) {
+        val input=EditText(this).apply { hint="Number of verified reps"; inputType=2; setTextColor(Color.WHITE); setHintTextColor(Color.GRAY) }
+        android.app.AlertDialog.Builder(this).setTitle(exercise).setView(input).setNegativeButton("CANCEL",null).setPositiveButton("ADD") { _,_ ->
+            val reps=input.text.toString().toIntOrNull()?.coerceIn(1,1000) ?: 0
+            if(reps>0) {
+                val old=prefs.getInt("questPoints",0); val gained=(old+reps)/10-old/10
+                prefs.edit().putInt("questPoints",old+reps).putInt("coins",prefs.getInt("coins",0)+gained).apply()
+                Toast.makeText(this,"+$reps points • +$gained coins",Toast.LENGTH_LONG).show(); show(::quests)
+            }
+        }.show()
+    }
+
+    private fun worldChat() {
+        title("WORLD CHAT")
+        copy("GLOBAL FORGE • LIVE BOARD",14f)
+        TextView(this).apply { text="WORLD CHAT BACKEND REQUIRED\n\nThe chat interface is ready, but public messages will remain locked until secure accounts, moderation, reporting, and a hosted real-time database are connected."; setTextColor(Color.LTGRAY); textSize=17f; setBackgroundColor(PANEL); setPadding(24,30,24,30) }.also(root::addView)
+        val message=field("Message the world...")
+        button("SEND TO WORLD") { Toast.makeText(this,"World Chat is not online yet",Toast.LENGTH_SHORT).show(); message.text.clear() }
+    }
+
+    private fun ownedItems()=prefs.getString("owned","")!!.split(",").filter { it.isNotBlank() }.toSet()
+    private fun equippedItems()=prefs.getString("equipped","")!!.split(",").filter { it.isNotBlank() }.toSet()
 
     private fun tierName(t:Int)=listOf("","INITIATE","IRONBOUND","VANGUARD","WARLORD","MYTHIC","CELESTIAL","IMMORTAL","ASCENDANT")[t.coerceIn(1,8)]
     private fun glyph(i:Int,t:Int):String { val weapons=listOf("†","⚔","♜","⛨","ϟ","⌁","➶","Λ","☠","◆"); return "${"✦".repeat(max(1,t/2))} ${weapons[i%weapons.size]} ${if(t>=4) "♛" else "◉"} ${"✦".repeat(max(1,t/2))}" }
