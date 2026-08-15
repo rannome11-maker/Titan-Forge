@@ -17,6 +17,8 @@ An offline-first gamified fitness prototype where consistency evolves a warrior 
 - 50-coin daily completion reward
 - Store, equipment slots, inventory, event vault and rep-based quests
 - World Chat interface prepared for a secure real-time backend
+- Lightweight procedural OpenGL 3D avatars with touch rotation and idle animation
+- Distinct character palettes, eight increasingly armored evolution models, and 3D equipment previews
 
 ## Build
 
