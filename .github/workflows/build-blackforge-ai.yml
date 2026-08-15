@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jegly/Box
-          ref: v3.3.3
+          ref: main
           path: blackforge
 
       - name: Brand BlackForge AI
@@ -27,19 +27,12 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           root = Path("blackforge/Android/src")
-
           build = root / "app/build.gradle.kts"
-          text = build.read_text()
-          text = text.replace('applicationId = "com.box.gallery"', 'applicationId = "com.blackforge.localai"')
-          text = text.replace('versionName = "3.3.3"', 'versionName = "1.0.0"')
+          text = build.read_text().replace('applicationId = "com.box.gallery"', 'applicationId = "com.blackforge.localai"')
           build.write_text(text)
-
           manifest = root / "app/src/main/AndroidManifest.xml"
-          text = manifest.read_text()
-          text = text.replace('android:label="Box"', 'android:label="BlackForge AI"')
-          text = text.replace('android:scheme="com.box.gallery"', 'android:scheme="com.blackforge.localai"')
+          text = manifest.read_text().replace('android:label="Box"', 'android:label="BlackForge AI"').replace('android:scheme="com.box.gallery"', 'android:scheme="com.blackforge.localai"')
           manifest.write_text(text)
-
           strings = root / "app/src/main/res/values/strings.xml"
           text = strings.read_text()
           for old, new in {
