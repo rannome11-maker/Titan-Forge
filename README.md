@@ -20,6 +20,7 @@ An offline-first gamified fitness prototype where consistency evolves a warrior 
 - Lightweight procedural OpenGL 3D avatars with touch rotation and idle animation
 - Distinct character palettes, eight increasingly armored evolution models, and 3D equipment previews
 - Device-safe software 3D projection with no GPU shader compatibility dependency
+- Live Supabase-powered public World Forum with username prompt, posting, automatic refresh, timestamps and client-side spam limits
 
 ## Build
 
