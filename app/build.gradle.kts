@@ -3,6 +3,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "com.dangerdan.titanforge"
     compileSdk = 35
+    buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -11,8 +12,10 @@ android {
         applicationId = "com.dangerdan.titanforge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.1"
+        versionName = "0.4.0"
+        versionCode = 5
+        buildConfigField("String", "SUPABASE_URL", "\"https://tkclbwoqqzmneroesmjq.supabase.co\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"sb_publishable_mSBzDdbVbYmDn5JQyODHaA_YQNjI_ox\"")
     }
 }
 
