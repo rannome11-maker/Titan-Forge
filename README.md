@@ -19,6 +19,7 @@ An offline-first gamified fitness prototype where consistency evolves a warrior 
 - World Chat interface prepared for a secure real-time backend
 - Lightweight procedural OpenGL 3D avatars with touch rotation and idle animation
 - Distinct character palettes, eight increasingly armored evolution models, and 3D equipment previews
+- Device-safe software 3D projection with no GPU shader compatibility dependency
 
 ## Build
 
