@@ -124,10 +124,10 @@ class MainActivity : AppCompatActivity() {
     private fun avatarCard(hero:String, tier:Int) {
         val equipped=equippedItems().mapNotNull { id -> shopItems.find { it.id==id } }
         val gear=if(equipped.isEmpty()) "NO EQUIPMENT" else equipped.joinToString("  ") { it.icon }
-        TextView(this).apply {
-            text="${glyph(prefs.getInt("heroIndex",0),tier)}\n\n$hero\n${tierName(tier)}\n$gear"
-            textSize=30f; gravity=Gravity.CENTER; setTextColor(GOLD); setBackgroundColor(PANEL); setPadding(10,40,10,40)
-        }.also(root::addView)
+        Avatar3DView(this,prefs.getInt("heroIndex",0),tier,equippedItems()).also {
+            root.addView(it,LinearLayout.LayoutParams(-1,720))
+        }
+        TextView(this).apply { text="$hero • ${tierName(tier)}\n$gear\nDRAG TO ROTATE"; textSize=20f; gravity=Gravity.CENTER; setTextColor(GOLD); setBackgroundColor(PANEL); setPadding(10,18,10,22) }.also(root::addView)
     }
 
     private fun dashboard() {
@@ -186,9 +186,18 @@ class MainActivity : AppCompatActivity() {
         shopItems.forEach { item ->
             val isOwned=item.id in owned
             button("${item.icon}  ${item.name} • ${item.type} • ${if(isOwned) "OWNED" else "${item.cost} COINS"}") {
-                if(isOwned) equip(item) else buy(item)
+                previewItem(item,isOwned)
             }
         }
+    }
+
+    private fun previewItem(item:ShopItem, isOwned:Boolean) {
+        val holder=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL; setPadding(12,12,12,12)
+            addView(Avatar3DView(this@MainActivity,prefs.getInt("heroIndex",0),prefs.getInt("tier",1),previewItem=item.id),LinearLayout.LayoutParams(-1,620))
+            addView(TextView(this@MainActivity).apply { text="${item.type} • ${item.cost} COINS\nDrag to rotate the 3D model"; setTextColor(Color.WHITE); gravity=Gravity.CENTER; textSize=16f; setPadding(8,12,8,12) })
+        }
+        android.app.AlertDialog.Builder(this).setTitle(item.name).setView(holder).setNegativeButton("CLOSE",null).setPositiveButton(if(isOwned) "EQUIP" else "BUY") { _,_ -> if(isOwned) equip(item) else buy(item) }.show()
     }
 
     private fun buy(item:ShopItem) {
