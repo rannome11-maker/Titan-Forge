@@ -1,4 +1,4 @@
-plugins { id("com.android.application") }
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 
 android {
     namespace = "com.blackforge.realm"
@@ -11,4 +11,10 @@ android {
         versionName = "1.0.0"
     }
     buildTypes { release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("debug") } }
+    packaging { jniLibs { useLegacyPackaging = true } }
+}
+
+dependencies {
+    implementation("io.github.aatricks:llmedge:0.3.9")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 }
