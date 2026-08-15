@@ -1,152 +1,109 @@
 package com.dangerdan.titanforge
 
 import android.content.Context
-import android.opengl.GLES20
-import android.opengl.GLSurfaceView
-import android.opengl.Matrix
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.view.MotionEvent
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import javax.microedition.khronos.egl.EGLConfig
-import javax.microedition.khronos.opengles.GL10
+import android.view.View
+import kotlin.math.cos
 import kotlin.math.sin
 
-/** Lightweight procedural dark-fantasy character and equipment renderer. */
+/** Device-safe software 3D renderer using projected and depth-sorted 3D cuboids. */
 class Avatar3DView(
     context: Context,
-    heroIndex: Int,
-    tier: Int,
-    equipped: Set<String> = emptySet(),
-    previewItem: String? = null
-) : GLSurfaceView(context) {
-    private val avatarRenderer = AvatarRenderer(heroIndex, tier, equipped, previewItem)
-    private var lastX = 0f
-
-    init {
-        setEGLContextClientVersion(2)
-        setRenderer(avatarRenderer)
-        renderMode = RENDERMODE_CONTINUOUSLY
-        setBackgroundColor(0xFF090909.toInt())
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_MOVE) avatarRenderer.rotation += (event.x-lastX)*0.6f
-        lastX=event.x
-        return true
-    }
-}
-
-private class AvatarRenderer(
-    private val hero: Int,
+    private val heroIndex: Int,
     private val tier: Int,
-    private val gear: Set<String>,
-    private val preview: String?
-) : GLSurfaceView.Renderer {
-    var rotation=18f
-    private lateinit var cube: CubeMesh
-    private val projection=FloatArray(16); private val view=FloatArray(16); private val vp=FloatArray(16)
-    private var start=System.currentTimeMillis()
+    private val equipped: Set<String> = emptySet(),
+    private val previewItem: String? = null
+) : View(context) {
+    private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
+    private var angle=.32f; private var lastX=0f
+    private val boxes=mutableListOf<Box>()
+    private val started=System.currentTimeMillis()
+    init { setBackgroundColor(Color.rgb(10,10,12)); isClickable=true }
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        GLES20.glClearColor(0.025f,0.025f,0.03f,1f)
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST); cube=CubeMesh()
+    override fun onTouchEvent(event:MotionEvent):Boolean {
+        when(event.action) {
+            MotionEvent.ACTION_DOWN -> lastX=event.x
+            MotionEvent.ACTION_MOVE -> { angle+=(event.x-lastX)*.012f; lastX=event.x; invalidate() }
+            MotionEvent.ACTION_UP -> performClick()
+        }; return true
+    }
+    override fun performClick():Boolean { super.performClick(); return true }
+    override fun onDraw(canvas:Canvas) {
+        super.onDraw(canvas); boxes.clear()
+        val time=(System.currentTimeMillis()-started)/1000f
+        if(previewItem!=null) buildItem(previewItem,0f,1.9f,0f,1.35f) else buildAvatar(time)
+        drawScene(canvas); postInvalidateDelayed(32)
     }
 
-    override fun onSurfaceChanged(gl: GL10?, width:Int, height:Int) {
-        GLES20.glViewport(0,0,width,height)
-        Matrix.perspectiveM(projection,0,42f,width.toFloat()/height.coerceAtLeast(1),0.1f,100f)
-        Matrix.setLookAtM(view,0,0f,2.1f,8.3f,0f,1.7f,0f,0f,1f,0f)
-        Matrix.multiplyMM(vp,0,projection,0,view,0)
-    }
-
-    override fun onDrawFrame(gl: GL10?) {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        val t=(System.currentTimeMillis()-start)/1000f
-        if(preview!=null) drawItem(preview,0f,1.6f,0f,1.5f,rotation+t*12f) else drawAvatar(t)
-    }
-
-    private fun drawAvatar(t:Float) {
-        val bob=sin(t*1.7f)*0.035f
-        val base=palette(hero); val armor=floatArrayOf(0.11f+hero%3*.035f,0.12f,0.14f+hero%4*.025f,1f)
-        val metal=if(tier>=6) floatArrayOf(.72f,.55f,.17f,1f) else floatArrayOf(.28f,.30f,.33f,1f)
-        part(0f,.05f,0f,4.4f,.08f,4.4f,floatArrayOf(.07f,.065f,.06f,1f),0f)
-        part(0f,.12f,0f,1.55f,.14f,1.55f,floatArrayOf(.16f,.12f,.08f,1f),rotation)
-        // boots and legs
-        part(-.34f,.58f+bob,0f,.42f,1.05f,.48f,armor,rotation); part(.34f,.58f+bob,0f,.42f,1.05f,.48f,armor,rotation)
-        part(-.34f,.08f+bob,.04f,.52f,.38f,.72f,metal,rotation); part(.34f,.08f+bob,.04f,.52f,.38f,.72f,metal,rotation)
-        // torso, belt, head
-        part(0f,1.75f+bob,0f,1.18f,1.35f,.62f,base,rotation)
-        part(0f,1.22f+bob,.02f,1.25f,.22f,.68f,metal,rotation)
-        part(0f,2.72f+bob,0f,.68f,.76f,.65f,floatArrayOf(.36f,.25f,.19f,1f),rotation)
-        // arms and tier-scaled pauldrons
-        part(-.84f,1.77f+bob,0f,.38f,1.28f,.42f,base,rotation); part(.84f,1.77f+bob,0f,.38f,1.28f,.42f,base,rotation)
+    private fun buildAvatar(time:Float) {
+        val bob=sin(time*1.8f)*.035f
+        val cloth=palette(heroIndex); val armor=if(tier>=6) Color.rgb(180,125,30) else Color.rgb(68,73,82)
+        box(0f,.04f,0f,4.7f,.08f,4.1f,Color.rgb(27,22,19)); box(0f,.12f,0f,1.55f,.14f,1.55f,Color.rgb(63,42,25))
+        box(-.34f,.62f+bob,0f,.42f,1.05f,.48f,cloth); box(.34f,.62f+bob,0f,.42f,1.05f,.48f,cloth)
+        box(-.34f,.12f+bob,.04f,.52f,.38f,.72f,armor); box(.34f,.12f+bob,.04f,.52f,.38f,.72f,armor)
+        box(0f,1.78f+bob,0f,1.18f,1.35f,.62f,cloth); box(0f,1.22f+bob,.02f,1.25f,.22f,.68f,armor)
+        box(0f,2.72f+bob,0f,.68f,.76f,.65f,Color.rgb(115,75,53))
+        box(-.84f,1.78f+bob,0f,.38f,1.28f,.42f,cloth); box(.84f,1.78f+bob,0f,.38f,1.28f,.42f,cloth)
         val shoulder=.44f+tier*.055f
-        part(-.82f,2.27f+bob,0f,shoulder,.34f,.72f,metal,rotation); part(.82f,2.27f+bob,0f,shoulder,.34f,.72f,metal,rotation)
-        // evolution: helm, crown/horns, cape and aura pillars
-        if(tier>=2) part(0f,2.93f+bob,0f,.78f,.35f,.72f,metal,rotation)
-        if(tier>=3) part(0f,1.82f+bob,.35f,1.48f,1.55f,.10f,floatArrayOf(.20f,.015f,.02f,1f),rotation)
-        if(tier>=4) { part(-.34f,3.43f+bob,0f,.13f,.72f,.13f,metal,rotation-18f); part(.34f,3.43f+bob,0f,.13f,.72f,.13f,metal,rotation+18f) }
-        if(tier>=6) { val aura=floatArrayOf(.55f,.35f,.05f,1f); part(-1.18f,1.6f,0f,.035f,2.7f,.035f,aura,rotation); part(1.18f,1.6f,0f,.035f,2.7f,.035f,aura,rotation) }
-        if(tier>=8) part(0f,3.58f+bob,0f,1.05f,.08f,1.05f,floatArrayOf(.83f,.62f,.12f,1f),rotation+t*24f)
-        gear.forEachIndexed { i,id -> drawEquipped(id,i,t,bob) }
+        box(-.82f,2.28f+bob,0f,shoulder,.34f,.72f,armor); box(.82f,2.28f+bob,0f,shoulder,.34f,.72f,armor)
+        if(tier>=2) box(0f,2.96f+bob,0f,.78f,.35f,.72f,armor)
+        if(tier>=3) box(0f,1.83f+bob,.38f,1.48f,1.62f,.10f,Color.rgb(68,5,11))
+        if(tier>=4) { box(-.34f,3.42f+bob,0f,.13f,.72f,.13f,armor); box(.34f,3.42f+bob,0f,.13f,.72f,.13f,armor) }
+        if(tier>=6) { box(-1.17f,1.65f,0f,.05f,2.8f,.05f,Color.rgb(224,147,24)); box(1.17f,1.65f,0f,.05f,2.8f,.05f,Color.rgb(224,147,24)) }
+        if(tier>=8) box(0f,3.62f+bob,0f,1.05f,.08f,1.05f,Color.rgb(245,185,45))
+        equipped.forEach { buildEquipped(it,bob) }
     }
 
-    private fun drawEquipped(id:String,index:Int,t:Float,bob:Float) {
+    private fun buildEquipped(id:String,bob:Float) {
         when(id) {
-            "iron_sword" -> { part(.98f,1.62f+bob,0f,.13f,1.75f,.16f,floatArrayOf(.55f,.57f,.60f,1f),rotation-12f); part(.98f,.78f+bob,0f,.62f,.12f,.16f,floatArrayOf(.20f,.12f,.05f,1f),rotation-12f) }
-            "war_axe" -> { part(.98f,1.45f+bob,0f,.14f,1.9f,.14f,floatArrayOf(.22f,.12f,.06f,1f),rotation); part(.98f,2.25f+bob,0f,.85f,.42f,.18f,floatArrayOf(.42f,.44f,.46f,1f),rotation) }
-            "storm_hammer" -> { part(.98f,1.42f+bob,0f,.16f,1.85f,.16f,floatArrayOf(.25f,.15f,.07f,1f),rotation); part(.98f,2.25f+bob,0f,.78f,.52f,.48f,floatArrayOf(.20f,.24f,.28f,1f),rotation) }
-            "gold_armor" -> part(0f,1.78f+bob,-.33f,1.27f,1.10f,.12f,floatArrayOf(.72f,.51f,.10f,1f),rotation)
-            "shadow_cloak" -> part(0f,1.55f+bob,.40f,1.58f,2.30f,.08f,floatArrayOf(.035f,.02f,.06f,1f),rotation)
-            "war_crown" -> { part(0f,3.18f+bob,0f,.82f,.14f,.75f,floatArrayOf(.80f,.58f,.10f,1f),rotation); part(0f,3.48f+bob,0f,.12f,.65f,.12f,floatArrayOf(.80f,.58f,.10f,1f),rotation) }
-            "ember_ring" -> part(-1.0f,1.18f+bob,0f,.32f,.08f,.32f,floatArrayOf(.85f,.16f,.03f,1f),rotation+t*80f)
-            "winged_boots" -> { part(-.62f,.18f+bob,0f,.42f,.12f,.65f,floatArrayOf(.58f,.58f,.62f,1f),rotation); part(.62f,.18f+bob,0f,.42f,.12f,.65f,floatArrayOf(.58f,.58f,.62f,1f),rotation) }
+            "iron_sword"->{ box(.98f,1.63f+bob,0f,.13f,1.75f,.16f,Color.LTGRAY); box(.98f,.78f+bob,0f,.62f,.12f,.16f,Color.rgb(85,45,15)) }
+            "war_axe"->{ box(.98f,1.45f+bob,0f,.14f,1.9f,.14f,Color.rgb(80,45,20)); box(.98f,2.25f+bob,0f,.85f,.42f,.18f,Color.GRAY) }
+            "storm_hammer"->{ box(.98f,1.42f+bob,0f,.16f,1.85f,.16f,Color.rgb(75,38,14)); box(.98f,2.25f+bob,0f,.78f,.52f,.48f,Color.rgb(55,70,88)) }
+            "gold_armor"->box(0f,1.8f+bob,-.34f,1.27f,1.10f,.12f,Color.rgb(205,145,25))
+            "shadow_cloak"->box(0f,1.55f+bob,.40f,1.58f,2.30f,.08f,Color.rgb(28,8,39))
+            "war_crown"->{ box(0f,3.18f+bob,0f,.82f,.14f,.75f,Color.rgb(220,157,25)); box(0f,3.48f+bob,0f,.12f,.65f,.12f,Color.rgb(220,157,25)) }
+            "ember_ring"->box(-1f,1.18f+bob,0f,.32f,.08f,.32f,Color.rgb(245,55,8))
+            "winged_boots"->{ box(-.62f,.2f+bob,0f,.42f,.12f,.65f,Color.LTGRAY); box(.62f,.2f+bob,0f,.42f,.12f,.65f,Color.LTGRAY) }
         }
     }
 
-    private fun drawItem(id:String,x:Float,y:Float,z:Float,s:Float,spin:Float) {
+    private fun buildItem(id:String,x:Float,y:Float,z:Float,s:Float) {
         when(id) {
-            "iron_sword" -> { part(x,y,z,.14f*s,2.1f*s,.15f*s,floatArrayOf(.60f,.62f,.65f,1f),spin); part(x,y-.9f*s,z,.72f*s,.13f*s,.20f*s,floatArrayOf(.27f,.15f,.05f,1f),spin) }
-            "war_axe" -> { part(x,y,z,.15f*s,2f*s,.15f*s,floatArrayOf(.25f,.14f,.06f,1f),spin); part(x,y+.72f*s,z,1.05f*s,.48f*s,.20f*s,floatArrayOf(.48f,.50f,.52f,1f),spin) }
-            "storm_hammer" -> { part(x,y,z,.16f*s,2f*s,.16f*s,floatArrayOf(.23f,.12f,.05f,1f),spin); part(x,y+.72f*s,z,1.0f*s,.65f*s,.62f*s,floatArrayOf(.18f,.23f,.29f,1f),spin) }
-            "gold_armor" -> { part(x,y,z,1.3f*s,1.5f*s,.58f*s,floatArrayOf(.72f,.51f,.10f,1f),spin); part(x-.78f*s,y+.48f*s,z,.5f*s,.36f*s,.7f*s,floatArrayOf(.72f,.51f,.10f,1f),spin); part(x+.78f*s,y+.48f*s,z,.5f*s,.36f*s,.7f*s,floatArrayOf(.72f,.51f,.10f,1f),spin) }
-            else -> part(x,y,z,1.15f*s,1.45f*s,.32f*s,palette(id.hashCode()),spin)
+            "iron_sword"->{ box(x,y,z,.14f*s,2.1f*s,.15f*s,Color.LTGRAY); box(x,y-.9f*s,z,.72f*s,.13f*s,.2f*s,Color.rgb(90,50,17)) }
+            "war_axe"->{ box(x,y,z,.15f*s,2f*s,.15f*s,Color.rgb(80,44,15)); box(x,y+.72f*s,z,1.05f*s,.48f*s,.2f*s,Color.GRAY) }
+            "storm_hammer"->{ box(x,y,z,.16f*s,2f*s,.16f*s,Color.rgb(77,40,13)); box(x,y+.72f*s,z,1f*s,.65f*s,.62f*s,Color.rgb(58,72,91)) }
+            "gold_armor"->{ box(x,y,z,1.3f*s,1.5f*s,.58f*s,Color.rgb(205,145,25)); box(x-.78f*s,y+.48f*s,z,.5f*s,.36f*s,.7f*s,Color.rgb(205,145,25)); box(x+.78f*s,y+.48f*s,z,.5f*s,.36f*s,.7f*s,Color.rgb(205,145,25)) }
+            "war_crown"->{ box(x,y,z,1.25f*s,.22f*s,1f*s,Color.rgb(220,157,25)); box(x,y+.52f*s,z,.18f*s,.9f*s,.18f*s,Color.rgb(220,157,25)) }
+            "shadow_cloak"->box(x,y,z,1.35f*s,2f*s,.12f*s,Color.rgb(38,10,52))
+            "ember_ring"->box(x,y,z,1.2f*s,.16f*s,1.2f*s,Color.rgb(245,55,8))
+            else->{ box(x-.45f*s,y,z,.55f*s,.3f*s,1.1f*s,Color.LTGRAY); box(x+.45f*s,y,z,.55f*s,.3f*s,1.1f*s,Color.LTGRAY) }
         }
     }
 
-    private fun part(x:Float,y:Float,z:Float,sx:Float,sy:Float,sz:Float,color:FloatArray,ry:Float) {
-        val model=FloatArray(16); val mvp=FloatArray(16)
-        Matrix.setIdentityM(model,0); Matrix.translateM(model,0,x,y,z); Matrix.rotateM(model,0,ry,0f,1f,0f); Matrix.scaleM(model,0,sx,sy,sz)
-        Matrix.multiplyMM(mvp,0,vp,0,model,0); cube.draw(mvp,color)
+    private fun box(x:Float,y:Float,z:Float,sx:Float,sy:Float,sz:Float,color:Int) { boxes+=Box(x,y,z,sx,sy,sz,color) }
+    private fun drawScene(canvas:Canvas) {
+        val scale=width.coerceAtMost(height)*.115f; val cx=width/2f; val ground=height*.86f
+        val faces=mutableListOf<Face>()
+        boxes.forEach { b ->
+            val pts=arrayOf(P(-.5f,-.5f,-.5f),P(.5f,-.5f,-.5f),P(.5f,.5f,-.5f),P(-.5f,.5f,-.5f),P(-.5f,-.5f,.5f),P(.5f,-.5f,.5f),P(.5f,.5f,.5f),P(-.5f,.5f,.5f)).map { p ->
+                val x=p.x*b.sx; val z=p.z*b.sz; P(x*cos(angle)-z*sin(angle)+b.x,p.y*b.sy+b.y,x*sin(angle)+z*cos(angle)+b.z)
+            }
+            val sides=arrayOf(intArrayOf(0,1,2,3),intArrayOf(4,7,6,5),intArrayOf(0,4,5,1),intArrayOf(3,2,6,7),intArrayOf(1,5,6,2),intArrayOf(0,3,7,4))
+            sides.forEachIndexed { i,side -> faces+=Face(side.map{pts[it]},shade(b.color,i)) }
+        }
+        faces.sortedBy { f -> f.p.sumOf { it.z.toDouble() }/f.p.size }.forEach { f ->
+            val path=Path(); f.p.forEachIndexed { i,p -> val depth=1f+p.z*.055f; val px=cx+p.x*scale/depth; val py=ground-p.y*scale/depth; if(i==0) path.moveTo(px,py) else path.lineTo(px,py) }
+            path.close(); paint.style=Paint.Style.FILL; paint.color=f.color; canvas.drawPath(path,paint)
+            paint.style=Paint.Style.STROKE; paint.strokeWidth=1.5f; paint.color=Color.argb(130,230,190,90); canvas.drawPath(path,paint)
+        }
     }
-
-    private fun palette(i:Int)=listOf(
-        floatArrayOf(.22f,.035f,.025f,1f),floatArrayOf(.06f,.10f,.16f,1f),floatArrayOf(.15f,.07f,.03f,1f),
-        floatArrayOf(.10f,.11f,.12f,1f),floatArrayOf(.16f,.03f,.08f,1f),floatArrayOf(.05f,.15f,.12f,1f)
-    )[kotlin.math.abs(i)%6]
-}
-
-private class CubeMesh {
-    private val vertices=floatArrayOf(
-        -0.5f,-0.5f,0.5f, 0.5f,-0.5f,0.5f, 0.5f,0.5f,0.5f, -0.5f,0.5f,0.5f,
-        -0.5f,-0.5f,-0.5f, -0.5f,0.5f,-0.5f, 0.5f,0.5f,-0.5f, 0.5f,-0.5f,-0.5f,
-        -0.5f,0.5f,-0.5f, -0.5f,0.5f,0.5f, 0.5f,0.5f,0.5f, 0.5f,0.5f,-0.5f,
-        -0.5f,-0.5f,-0.5f, 0.5f,-0.5f,-0.5f, 0.5f,-0.5f,0.5f, -0.5f,-0.5f,0.5f,
-        0.5f,-0.5f,-0.5f, 0.5f,0.5f,-0.5f, 0.5f,0.5f,0.5f, 0.5f,-0.5f,0.5f,
-        -0.5f,-0.5f,-0.5f, -0.5f,-0.5f,0.5f, -0.5f,0.5f,0.5f, -0.5f,0.5f,-0.5f)
-    private val indices=byteArrayOf(0,1,2,0,2,3,4,5,6,4,6,7,8,9,10,8,10,11,12,13,14,12,14,15,16,17,18,16,18,19,20,21,22,20,22,23)
-    private val vb=ByteBuffer.allocateDirect(vertices.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(vertices); position(0) }
-    private val ib=ByteBuffer.allocateDirect(indices.size).apply { put(indices); position(0) }
-    private val program:Int
-    init {
-        val vs=GLES20.glCreateShader(GLES20.GL_VERTEX_SHADER).also { GLES20.glShaderSource(it,"uniform mat4 uMVP; attribute vec3 aPos; varying float shade; void main(){ gl_Position=uMVP*vec4(aPos,1.0); shade=.70+aPos.y*.22+aPos.z*.08; }"); GLES20.glCompileShader(it) }
-        val fs=GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER).also { GLES20.glShaderSource(it,"precision mediump float; uniform vec4 uColor; varying float shade; void main(){ gl_FragColor=vec4(uColor.rgb*shade,uColor.a); }"); GLES20.glCompileShader(it) }
-        program=GLES20.glCreateProgram().also { GLES20.glAttachShader(it,vs); GLES20.glAttachShader(it,fs); GLES20.glLinkProgram(it) }
-    }
-    fun draw(mvp:FloatArray,color:FloatArray) {
-        GLES20.glUseProgram(program); val p=GLES20.glGetAttribLocation(program,"aPos"); GLES20.glEnableVertexAttribArray(p)
-        GLES20.glVertexAttribPointer(p,3,GLES20.GL_FLOAT,false,12,vb); GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program,"uMVP"),1,false,mvp,0)
-        GLES20.glUniform4fv(GLES20.glGetUniformLocation(program,"uColor"),1,color,0); GLES20.glDrawElements(GLES20.GL_TRIANGLES,indices.size,GLES20.GL_UNSIGNED_BYTE,ib)
-        GLES20.glDisableVertexAttribArray(p)
-    }
+    private fun shade(c:Int,face:Int):Int { val f=floatArrayOf(.55f,.72f,1f,.82f,.66f,.48f)[face]; return Color.rgb((Color.red(c)*f).toInt().coerceIn(0,255),(Color.green(c)*f).toInt().coerceIn(0,255),(Color.blue(c)*f).toInt().coerceIn(0,255)) }
+    private fun palette(i:Int)=listOf(Color.rgb(112,18,13),Color.rgb(26,54,92),Color.rgb(91,40,15),Color.rgb(62,68,75),Color.rgb(90,15,48),Color.rgb(25,83,62))[kotlin.math.abs(i)%6]
+    private data class Box(val x:Float,val y:Float,val z:Float,val sx:Float,val sy:Float,val sz:Float,val color:Int)
+    private data class P(val x:Float,val y:Float,val z:Float)
+    private data class Face(val p:List<P>,val color:Int)
 }
