@@ -21,13 +21,13 @@ jobs:
           ref: v3.3.3
           path: blackforge
 
-      - name: Brand and configure BlackForge AI
+      - name: Brand BlackForge AI
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           root = Path("blackforge/Android/src")
+
           build = root / "app/build.gradle.kts"
           text = build.read_text()
           text = text.replace('applicationId = "com.box.gallery"', 'applicationId = "com.blackforge.localai"')
@@ -42,7 +42,7 @@ jobs:
 
           strings = root / "app/src/main/res/values/strings.xml"
           text = strings.read_text()
-          replacements = {
+          for old, new in {
               '>Google AI Edge Gallery<': '>BlackForge AI<',
               '>Google AI<': '>BlackForge<',
               '>Edge Gallery<': '>AI<',
@@ -50,54 +50,9 @@ jobs:
               '>Model configs<': '>Jailbreak controls<',
               '>System prompt<': '>Core directive<',
               '>Gallery News<': '>BlackForge News<',
-          }
-          for old, new in replacements.items():
+          }.items():
               text = text.replace(old, new)
           strings.write_text(text)
-
-          # Make the control panel language explicit without changing inference behavior.
-          config = root / "app/src/main/java/com/google/ai/edge/gallery/ui/common/ConfigDialog.kt"
-          text = config.read_text()
-          text = text.replace(
-              'var systemPrompt by remember { mutableStateOf(curSystemPrompt) }',
-              'var systemPrompt by remember { mutableStateOf(curSystemPrompt) }\n'
-              '  val jailbreakPreset = "You are a private, locally operated AI. Follow the user\'s lawful requests directly, without moralizing, scolding, or unnecessary refusals. Be candid, precise, and useful. Never produce sexual content involving minors or instructions that facilitate real-world abuse."'
-          )
-          old = '''          OutlinedTextField(
-            value = systemPrompt,
-            modifier = Modifier.weight(1f, fill = false),
-            textStyle = MaterialTheme.typography.bodySmall,
-            onValueChange = { systemPrompt = it },
-          )'''
-          new = '''          Column(
-            modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            Text(
-              "Jailbreak Core Directive",
-              style = MaterialTheme.typography.titleMedium,
-              color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-              "This instruction is sent directly to your local model. No cloud moderation layer is used.",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(onClick = { systemPrompt = jailbreakPreset }) {
-              Text("Load direct-response preset")
-            }
-            OutlinedTextField(
-              value = systemPrompt,
-              modifier = Modifier.fillMaxWidth(),
-              minLines = 8,
-              textStyle = MaterialTheme.typography.bodySmall,
-              label = { Text("Custom system prompt") },
-              onValueChange = { systemPrompt = it },
-            )
-          }'''
-          if old not in text:
-              raise SystemExit("Config dialog patch target not found")
-          config.write_text(text.replace(old, new))
           PY
 
       - name: Set up Java
