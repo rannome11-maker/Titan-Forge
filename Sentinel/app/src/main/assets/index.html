@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>BlackForge Sentinel</title>
+<style>
+:root{--bg:#080b0d;--panel:#11171b;--line:#263138;--gold:#ffb300;--text:#f4f5f6;--muted:#9ba9b1;--red:#ff5147}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,sans-serif}.top{padding:24px 18px 14px;background:linear-gradient(145deg,#151b1f,#080b0d);border-bottom:1px solid var(--line)}h1{margin:0;font-size:23px;letter-spacing:1px}.gold{color:var(--gold)}.sub{color:var(--muted);margin-top:5px;font-size:12px}.nav{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:repeat(4,1fr);background:#0d1215;border-bottom:1px solid var(--line)}.nav button{border:0;background:transparent;color:var(--muted);padding:13px 2px;font-weight:700}.nav button.on{color:var(--gold);border-bottom:2px solid var(--gold)}main{padding:14px 14px 35px}.page{display:none}.page.on{display:block}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;margin-bottom:12px}.label{font-size:11px;color:var(--gold);letter-spacing:1.5px;font-weight:800}.title{font-size:17px;font-weight:800;margin:5px 0}.muted{color:var(--muted);font-size:13px}.btn{display:inline-block;background:var(--gold);color:#111;border:0;border-radius:9px;padding:10px 13px;font-weight:800;margin:9px 5px 0 0}.btn.dark{background:#202a30;color:#fff}.btn.red{background:var(--red);color:#fff}.status{display:flex;gap:8px;align-items:center}.dot{width:9px;height:9px;border-radius:50%;background:#53d769;box-shadow:0 0 10px #53d769}.alert{border-left:4px solid var(--gold)}.danger{border-left-color:var(--red)}textarea,input{width:100%;background:#080b0d;color:#fff;border:1px solid var(--line);border-radius:9px;padding:11px;margin-top:8px}textarea{min-height:120px}.source{display:flex;justify-content:space-between;gap:12px;align-items:center}.source .btn{white-space:nowrap}iframe{width:100%;height:300px;border:0;border-radius:10px;margin-top:10px}.spin{color:var(--gold)}
+</style></head>
+<body><header class="top"><div class="label">70-MILE LOCAL INTELLIGENCE</div><h1>BLACKFORGE <span class="gold">SENTINEL</span></h1><div class="sub">Hildale, Utah • Public-source situational awareness</div></header>
+<nav class="nav"><button class="on" onclick="tab('live',this)">LIVE</button><button onclick="tab('map',this)">MAP</button><button onclick="tab('sources',this)">SOURCES</button><button onclick="tab('log',this)">LOG</button></nav>
+<main>
+<section id="live" class="page on">
+ <div class="card"><div class="status"><span class="dot"></span><b>PUBLIC DATA MONITOR</b></div><div class="muted">Weather and earthquake feeds update live. Agency pages open in their official viewers.</div><button class="btn" onclick="refreshAll()">REFRESH INTEL</button></div>
+ <div class="label">ACTIVE WEATHER ALERTS</div><div id="weather"><div class="card spin">Loading NWS alerts…</div></div>
+ <div class="label">RECENT EARTHQUAKES • 70 MI</div><div id="quakes"><div class="card spin">Loading USGS activity…</div></div>
+</section>
+<section id="map" class="page"><div class="card"><div class="title">Hildale Operating Area</div><div class="muted">Approximate 70-mile coverage. Public alerts may describe broader warning zones.</div><iframe src="https://www.openstreetmap.org/export/embed.html?bbox=-114.30%2C36.00%2C-111.63%2C38.02&amp;layer=mapnik&amp;marker=37.0036%2C-112.9669"></iframe></div><div class="card"><div class="title">Priority corridors</div><div class="muted">Hildale • Colorado City • Hurricane • St. George • Kanab • Fredonia • northern Mohave County • southern Kane/Washington counties</div></div></section>
+<section id="sources" class="page"><div id="sourceList"></div></section>
+<section id="log" class="page">
+ <div class="card"><div class="title">Incident Journal</div><input id="tags" placeholder="Tags: fire, EMS, road, agency…"><textarea id="note" placeholder="Type observations or use voice logging…"></textarea><button id="mic" class="btn red" onclick="listen()">VOICE LOG</button><button class="btn" onclick="saveLog()">SAVE ENTRY</button><button class="btn dark" onclick="exportLog()">EXPORT</button></div>
+ <div id="entries"></div>
+</section>
+</main>
+<script>
+const HOME={lat:37.0036,lon:-112.9669},RADIUS=70;
+const sources=[
+ ['Washington County Emergency Updates','Official emergency, fire and flood updates','https://www.washco.utah.gov/departments/emergency-management/emergency-updates/'],
+ ['Washington County Evacuation Zones','Genasys real-time evacuation status','https://www.washco.utah.gov/departments/emergency-management/evacuation-zones/'],
+ ['Kane County Emergency Services','Everbridge registration and county information','https://www.kane.utah.gov/195/Emergency-Services'],
+ ['Kane County Dispatch','Police, fire and medical dispatch coverage information','https://kane.utah.gov/302/Dispatch'],
+ ['Mohave County Sheriff','Official public notices and services','https://www.mohave.gov/departments/sheriff/'],
+ ['Mohave County Alerts','CodeRED emergency notification registration','https://public.coderedweb.com/cne/en-us/bf06da57f62c'],
+ ['PulsePoint Respond','Participating public fire and EMS incidents','https://web.pulsepoint.org/'],
+ ['OpenMHz Systems','Public radio calls where a local system is available','https://openmhz.com/systems'],
+ ['Broadcastify Directory','Public listener page; no automated scraping','https://www.broadcastify.com/listen/'],
+ ['Utah 511','Road incidents, closures and cameras','https://www.udottraffic.utah.gov/'],
+ ['Arizona 511','Arizona roads, closures and cameras','https://www.az511.gov/'],
+ ['Utah Wildfire Info','State wildfire situation and restrictions','https://utahfireinfo.gov/'],
+ ['InciWeb','Federal wildfire and incident information','https://inciweb.wildfire.gov/'],
+ ['NWS Salt Lake City','Official regional forecasts and warnings','https://www.weather.gov/slc/'],
+ ['NWS Flagstaff','Official northern Arizona warnings','https://www.weather.gov/fgz/']
+];
+function tab(id,b){document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');b.classList.add('on');if(id==='log')renderLogs()}
+function openUrl(u){if(window.SentinelAndroid)SentinelAndroid.open(u);else location.href=u}
+function dist(a,b,c,d){const p=Math.PI/180,R=3958.8,x=(c-a)*p,y=(d-b)*p;const q=Math.sin(x/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(q))}
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+async function weather(){const box=document.getElementById('weather');try{let all=[];for(const area of ['UT','AZ']){const j=await fetch('https://api.weather.gov/alerts/active?area='+area).then(r=>r.json());all.push(...j.features)}all=all.filter(f=>{const g=f.geometry;if(!g)return /Washington|Kane|Mohave|Coconino|Hildale|Colorado City|Kanab|St. George|Hurricane/i.test(f.properties.areaDesc||'');const pts=g.type==='Polygon'?g.coordinates[0]:g.type==='MultiPolygon'?g.coordinates[0][0]:[];return pts.some(p=>dist(HOME.lat,HOME.lon,p[1],p[0])<=RADIUS)});box.innerHTML=all.length?all.map(f=>`<div class="card alert ${/warning|emergency/i.test(f.properties.severity)?'danger':''}"><div class="label">${esc(f.properties.severity||'ALERT')}</div><div class="title">${esc(f.properties.event)}</div><div class="muted">${esc(f.properties.areaDesc)}</div><button class="btn dark" onclick="openUrl('${f.id}')">DETAILS</button></div>`).join(''):'<div class="card"><b>No active NWS alerts found within the operating area.</b></div>'}catch(e){box.innerHTML='<div class="card danger">NWS feed unavailable. Tap refresh or open the NWS source.</div>'}}
+async function quakes(){const box=document.getElementById('quakes');try{const j=await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson').then(r=>r.json());const q=j.features.map(f=>({f,d:dist(HOME.lat,HOME.lon,f.geometry.coordinates[1],f.geometry.coordinates[0])})).filter(x=>x.d<=RADIUS).sort((a,b)=>b.f.properties.time-a.f.properties.time).slice(0,20);box.innerHTML=q.length?q.map(x=>`<div class="card"><div class="label">M ${x.f.properties.mag??'?'} • ${x.d.toFixed(0)} MI</div><div class="title">${esc(x.f.properties.place)}</div><div class="muted">${new Date(x.f.properties.time).toLocaleString()}</div><button class="btn dark" onclick="openUrl('${x.f.properties.url}')">USGS</button></div>`).join(''):'<div class="card"><b>No earthquakes reported within 70 miles this week.</b></div>'}catch(e){box.innerHTML='<div class="card danger">USGS feed unavailable.</div>'}}
+function refreshAll(){weather();quakes()}
+function renderSources(){document.getElementById('sourceList').innerHTML=sources.map(s=>`<div class="card source"><div><div class="title">${s[0]}</div><div class="muted">${s[1]}</div></div><button class="btn" onclick="openUrl('${s[2]}')">OPEN</button></div>`).join('')}
+function logs(){try{return JSON.parse(localStorage.sentinelLogs||'[]')}catch(e){return[]}}
+function saveLog(){const n=document.getElementById('note'),t=document.getElementById('tags');if(!n.value.trim())return;const a=logs();a.unshift({time:new Date().toISOString(),tags:t.value.trim(),text:n.value.trim()});localStorage.sentinelLogs=JSON.stringify(a.slice(0,500));n.value='';t.value='';renderLogs()}
+function renderLogs(){const a=logs();document.getElementById('entries').innerHTML=a.length?a.map((x,i)=>`<div class="card"><div class="label">${new Date(x.time).toLocaleString()} ${esc(x.tags)}</div><div style="margin-top:7px">${esc(x.text)}</div><button class="btn dark" onclick="delLog(${i})">DELETE</button></div>`).join(''):'<div class="card muted">No logged incidents yet.</div>'}
+function delLog(i){const a=logs();a.splice(i,1);localStorage.sentinelLogs=JSON.stringify(a);renderLogs()}
+function exportLog(){const out=logs().map(x=>`${new Date(x.time).toLocaleString()} [${x.tags}]\n${x.text}`).join('\n\n');if(window.SentinelAndroid)SentinelAndroid.share(out||'No Sentinel log entries.')}
+function listen(){document.getElementById('mic').textContent='STARTING…';if(window.SentinelAndroid)SentinelAndroid.listen()}
+function voiceState(s){document.getElementById('mic').textContent=s}
+function receiveSpeech(s){document.getElementById('note').value+=(document.getElementById('note').value?' ':'')+s;voiceState('VOICE LOG')}
+renderSources();refreshAll();renderLogs();
+</script></body></html>
