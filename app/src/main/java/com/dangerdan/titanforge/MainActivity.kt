@@ -10,6 +10,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -18,6 +20,10 @@ import java.time.LocalDate
 import java.time.temporal.WeekFields
 import java.util.Calendar
 import java.util.Locale
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.max
 import kotlin.math.min
 
@@ -26,10 +32,13 @@ private val BLACK = Color.rgb(9,9,9)
 private val PANEL = Color.rgb(24,24,24)
 
 private data class ShopItem(val id:String, val name:String, val icon:String, val type:String, val cost:Int)
+private data class ForumMessage(val username:String, val body:String, val createdAt:String)
 
 class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("forge", MODE_PRIVATE) }
     private lateinit var root: LinearLayout
+    private val handler=Handler(Looper.getMainLooper())
+    private var forumPolling=false
     private val male = listOf("Ares","Ronin","Titan","Warden","Berserker","Paladin","Ranger","Spartan","Revenant","Sentinel")
     private val female = listOf("Valkyrie","Nyx","Athena","Huntress","Oracle","Tempest","Ember","Siren","Raven","Sovereign")
     private val shopItems = listOf(
@@ -45,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun show(screen: () -> Unit) {
+        forumPolling=false
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32,28,32,28); setBackgroundColor(BLACK) }
         setContentView(ScrollView(this).apply { setBackgroundColor(BLACK); addView(root) })
         if (prefs.getBoolean("setup",false)) topNav()
@@ -249,10 +259,73 @@ class MainActivity : AppCompatActivity() {
 
     private fun worldChat() {
         title("WORLD CHAT")
-        copy("GLOBAL FORGE • LIVE BOARD",14f)
-        TextView(this).apply { text="WORLD CHAT BACKEND REQUIRED\n\nThe chat interface is ready, but public messages will remain locked until secure accounts, moderation, reporting, and a hosted real-time database are connected."; setTextColor(Color.LTGRAY); textSize=17f; setBackgroundColor(PANEL); setPadding(24,30,24,30) }.also(root::addView)
-        val message=field("Message the world...")
-        button("SEND TO WORLD") { Toast.makeText(this,"World Chat is not online yet",Toast.LENGTH_SHORT).show(); message.text.clear() }
+        val username=prefs.getString("forumUsername","")!!.trim()
+        if(username.isBlank()) { promptUsername(); return }
+        copy("GLOBAL FORGE • LIVE BOARD\nPosting as $username",14f)
+        button("CHANGE USERNAME") { promptUsername(true) }
+        val message=field("Message the world — 280 characters max")
+        message.maxLines=4
+        button("SEND TO WORLD") {
+            val body=message.text.toString().trim()
+            val last=prefs.getLong("lastForumPost",0L)
+            when {
+                body.isBlank() -> Toast.makeText(this,"Enter a message",Toast.LENGTH_SHORT).show()
+                body.length>280 -> Toast.makeText(this,"Message is over 280 characters",Toast.LENGTH_SHORT).show()
+                System.currentTimeMillis()-last<3000 -> Toast.makeText(this,"Wait a moment before posting again",Toast.LENGTH_SHORT).show()
+                else -> { message.text.clear(); postForumMessage(username,body) }
+            }
+        }
+        title("LATEST MESSAGES",20f)
+        val board=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }.also(root::addView)
+        copy("Forum messages are public. Do not post private information.",13f)
+        forumPolling=true
+        refreshForum(board)
+        handler.postDelayed(object:Runnable { override fun run() { if(forumPolling && board.isAttachedToWindow) { refreshForum(board); handler.postDelayed(this,4000) } } },4000)
+    }
+
+    private fun promptUsername(change:Boolean=false) {
+        val input=EditText(this).apply { hint="Username (3–24 characters)"; setTextColor(Color.WHITE); setHintTextColor(Color.GRAY); setText(prefs.getString("forumUsername","")) }
+        android.app.AlertDialog.Builder(this).setTitle(if(change) "Change forum username" else "Enter a forum username").setMessage("Letters, numbers, spaces, underscores and hyphens only.").setView(input).setCancelable(change).setNegativeButton(if(change) "CANCEL" else "BACK") { _,_ -> if(!change) show(::station) }.setPositiveButton("ENTER") { _,_ ->
+            val name=input.text.toString().trim()
+            if(name.matches(Regex("^[A-Za-z0-9_ -]{3,24}$"))) { prefs.edit().putString("forumUsername",name).apply(); show(::worldChat) }
+            else { Toast.makeText(this,"Use 3–24 valid characters",Toast.LENGTH_LONG).show(); promptUsername(change) }
+        }.show()
+    }
+
+    private fun refreshForum(board:LinearLayout) {
+        Thread {
+            try {
+                val endpoint="${BuildConfig.SUPABASE_URL}/rest/v1/world_forum_messages?select=username,body,created_at&deleted=eq.false&order=created_at.desc&limit=100"
+                val connection=(URL(endpoint).openConnection() as HttpURLConnection).apply { requestMethod="GET"; setRequestProperty("apikey",BuildConfig.SUPABASE_KEY); connectTimeout=8000; readTimeout=8000 }
+                val payload=connection.inputStream.bufferedReader().use { it.readText() }
+                val array=JSONArray(payload); val messages=(0 until array.length()).map { i -> array.getJSONObject(i).let { ForumMessage(it.getString("username"),it.getString("body"),it.getString("created_at")) } }.reversed()
+                runOnUiThread { if(forumPolling && board.isAttachedToWindow) renderForum(board,messages) }
+            } catch(e:Exception) { runOnUiThread { if(board.childCount==0) TextView(this).apply { text="Unable to reach the World Forum. Pull back and try again."; setTextColor(Color.LTGRAY); setPadding(16,24,16,24) }.also(board::addView) } }
+        }.start()
+    }
+
+    private fun renderForum(board:LinearLayout,messages:List<ForumMessage>) {
+        board.removeAllViews()
+        if(messages.isEmpty()) TextView(this).apply { text="The World Forum is empty. Be the first warrior to speak."; setTextColor(Color.LTGRAY); setPadding(16,24,16,24) }.also(board::addView)
+        messages.forEach { msg ->
+            TextView(this).apply {
+                val stamp=msg.createdAt.replace('T',' ').take(16)+" UTC"
+                text="${msg.username}  •  $stamp\n${msg.body}"; setTextColor(Color.WHITE); textSize=16f; setBackgroundColor(PANEL); setPadding(20,16,20,18)
+            }.also { board.addView(it,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,5,0,5) }) }
+        }
+    }
+
+    private fun postForumMessage(username:String,body:String) {
+        Thread {
+            try {
+                val connection=(URL("${BuildConfig.SUPABASE_URL}/rest/v1/world_forum_messages").openConnection() as HttpURLConnection).apply {
+                    requestMethod="POST"; doOutput=true; setRequestProperty("apikey",BuildConfig.SUPABASE_KEY); setRequestProperty("Content-Type","application/json"); setRequestProperty("Prefer","return=minimal"); connectTimeout=8000; readTimeout=8000
+                }
+                connection.outputStream.use { it.write(JSONObject().put("username",username).put("body",body).toString().toByteArray()) }
+                if(connection.responseCode in 200..299) runOnUiThread { prefs.edit().putLong("lastForumPost",System.currentTimeMillis()).apply(); Toast.makeText(this,"Message posted",Toast.LENGTH_SHORT).show(); show(::worldChat) }
+                else throw IllegalStateException("Forum rejected message")
+            } catch(e:Exception) { runOnUiThread { Toast.makeText(this,"Message failed to send",Toast.LENGTH_LONG).show() } }
+        }.start()
     }
 
     private fun ownedItems()=prefs.getString("owned","")!!.split(",").filter { it.isNotBlank() }.toSet()
