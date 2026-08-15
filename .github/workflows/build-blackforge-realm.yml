@@ -1,17 +1,26 @@
 name: Build BlackForge Realm APK
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [blackforge-realm]
+    paths: [BlackForgeRealm/**, .github/workflows/build-blackforge-realm.yml]
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: realm } }
+    defaults:
+      run:
+        working-directory: BlackForgeRealm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: '8.9' }
+        with:
+          gradle-version: '8.9'
       - run: gradle :app:assembleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: BlackForge-Realm-APK
-          path: realm/app/build/outputs/apk/release/app-release.apk
+          path: BlackForgeRealm/app/build/outputs/apk/release/app-release.apk
