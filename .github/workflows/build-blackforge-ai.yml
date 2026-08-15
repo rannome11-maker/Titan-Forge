@@ -30,6 +30,9 @@ jobs:
           build = root / "app/build.gradle.kts"
           text = build.read_text().replace('applicationId = "com.box.gallery"', 'applicationId = "com.blackforge.localai"')
           build.write_text(text)
+          versions = root / "gradle/libs.versions.toml"
+          text = versions.read_text().replace('kotlin = "2.2.10"', 'kotlin = "2.3.10"').replace('kotlinReflect = "2.2.21"', 'kotlinReflect = "2.3.10"')
+          versions.write_text(text)
           manifest = root / "app/src/main/AndroidManifest.xml"
           text = manifest.read_text().replace('android:label="Box"', 'android:label="BlackForge AI"').replace('android:scheme="com.box.gallery"', 'android:scheme="com.blackforge.localai"')
           manifest.write_text(text)
